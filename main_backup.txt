@@ -1,0 +1,300 @@
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/joho/godotenv"
+	"github.com/realtime-ai/realtime-ai/pkg/elements"
+	"github.com/realtime-ai/realtime-ai/pkg/pipeline"
+	"github.com/realtime-ai/realtime-ai/pkg/realtimeapi"
+	"github.com/realtime-ai/realtime-ai/pkg/server"
+	"github.com/realtime-ai/realtime-ai/pkg/tts"
+)
+
+const (
+	defaultHTTPPort = ":8082"
+	sampleRateIn    = 8000
+	sampleRateOut   = 24000
+	ratio           = 3
+)
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+func main() {
+	_ = godotenv.Load()
+
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		log.Fatal("OPENAI_API_KEY is required")
+	}
+
+	vadPath := findVADModel()
+	port := getEnv("VOICE_ASSISTANT_PORT", defaultHTTPPort)
+	voice := getEnv("VOICE_ASSISTANT_VOICE", "coral")
+
+	// Prompt ottimizzato per ignorare residui di trascrizione errata
+	defaultPrompt := "Sei un assistente vocale professionale. Se ricevi input senza senso o tipici di allucinazioni ASR (come 'Sottotitoli', 'Grazie per la visione'), ignorali completamente."
+	prompt := getEnv("VOICE_ASSISTANT_SYSTEM_PROMPT", defaultPrompt)
+
+	srv := server.NewWebRTCRealtimeServer(server.DefaultWebRTCRealtimeConfig())
+	srv.SetPipelineFactory(func(ctx context.Context, session *realtimeapi.Session) (*pipeline.Pipeline, error) {
+		p, _, _, err := createSIPPipeline(ctx, session, PipelineConfig{
+			OpenAIKey:    apiKey,
+			VADModelPath: vadPath,
+			Voice:        voice,
+			SystemPrompt: prompt,
+		})
+		return p, err
+	})
+
+	if err := srv.Start(); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
+
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		handleWebSocket(w, r, PipelineConfig{
+			OpenAIKey:    apiKey,
+			VADModelPath: vadPath,
+			Voice:        voice,
+			SystemPrompt: prompt,
+		})
+	})
+
+	log.Printf("AI Gateway avviato su porta %s", port)
+	if err := http.ListenAndServe(port, nil); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// --- AUDIO CONVERSION ---
+
+func mulawToLinear(mulaw []byte) []byte {
+	linear := make([]byte, len(mulaw)*2)
+	for i, b := range mulaw {
+		u := uint32(^b)
+		sign := (u & 0x80)
+		exponent := (u >> 4) & 0x07
+		mantissa := u & 0x0F
+		sample := int16((mantissa << 3) + 132)
+		sample <<= exponent
+		sample -= 132
+		if sign == 0 {
+			sample = -sample
+		}
+		linear[i*2] = byte(sample & 0xFF)
+		linear[i*2+1] = byte(sample >> 8)
+	}
+	return linear
+}
+
+func linearToMulaw(sample int16) byte {
+	// convert a single 16-bit linear PCM sample to μ-law
+	var sign byte
+	s := int(sample)
+	if s < 0 {
+		s = -s
+		sign = 0x80
+	} else {
+		sign = 0x00
+	}
+
+	if s > 32635 {
+		s = 32635
+	}
+	s += 132
+
+	var exponent int
+	switch {
+	case s < 256:
+		exponent = 0
+	case s < 512:
+		exponent = 1
+	case s < 1024:
+		exponent = 2
+	case s < 2048:
+		exponent = 3
+	case s < 4096:
+		exponent = 4
+	case s < 8192:
+		exponent = 5
+	case s < 16384:
+		exponent = 6
+	default:
+		exponent = 7
+	}
+
+	mantissa := (s >> (exponent + 3)) & 0x0F
+	return ^byte(sign | byte(exponent<<4) | byte(mantissa))
+}
+
+func resampleAndMulaw(pcm []byte) []byte {
+	const bytesPerSample = 2
+	mulaw := make([]byte, len(pcm)/(bytesPerSample*ratio))
+
+	for i := 0; i < len(mulaw); i++ {
+		pos := i * bytesPerSample * ratio
+		if pos+1 >= len(pcm) {
+			break
+		}
+
+		sample := int16(uint16(pcm[pos]) | uint16(pcm[pos+1])<<8)
+		mulaw[i] = linearToMulaw(sample)
+	}
+	return mulaw
+}
+
+// --- WEBSOCKET HANDLER ---
+
+func handleWebSocket(w http.ResponseWriter, r *http.Request, cfg PipelineConfig) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	session := &realtimeapi.Session{ID: "sip-" + time.Now().Format("0405")}
+	pipe, inChan, outChan, err := createSIPPipeline(ctx, session, cfg)
+	if err != nil {
+		return
+	}
+
+	if err := pipe.Start(ctx); err != nil {
+		return
+	}
+	defer pipe.Stop()
+
+	// start reader in background and run writer in this goroutine
+	go wsReadLoop(conn, inChan, session.ID, cancel)
+	_ = wsWriteLoop(ctx, conn, outChan)
+}
+
+// wsReadLoop reads messages from the websocket and forwards audio to the pipeline input channel.
+// On read error it calls cancel to stop the pipeline context.
+func wsReadLoop(conn *websocket.Conn, inChan chan *pipeline.PipelineMessage, sessionID string, cancel context.CancelFunc) {
+	for {
+		mt, data, err := conn.ReadMessage()
+		if err != nil {
+			cancel()
+			return
+		}
+		if mt == websocket.BinaryMessage {
+			inChan <- &pipeline.PipelineMessage{
+				Type:      pipeline.MsgTypeAudio,
+				SessionID: sessionID,
+				AudioData: &pipeline.AudioData{
+					Data:       mulawToLinear(data),
+					SampleRate: sampleRateIn,
+					Channels:   1,
+					MediaType:  pipeline.AudioMediaTypeRaw,
+				},
+			}
+		}
+	}
+}
+
+// wsWriteLoop listens for outgoing pipeline messages and writes audio back on the websocket.
+func wsWriteLoop(ctx context.Context, conn *websocket.Conn, outChan chan *pipeline.PipelineMessage) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case msg, ok := <-outChan:
+			if !ok {
+				return nil
+			}
+			if msg.Type == pipeline.MsgTypeAudio && msg.AudioData != nil {
+				if err := conn.WriteMessage(websocket.BinaryMessage, resampleAndMulaw(msg.AudioData.Data)); err != nil {
+					return err
+				}
+			}
+		}
+	}
+}
+
+func createSIPPipeline(ctx context.Context, session *realtimeapi.Session, cfg PipelineConfig) (*pipeline.Pipeline, chan *pipeline.PipelineMessage, chan *pipeline.PipelineMessage, error) {
+	pipe := pipeline.NewPipeline(session.ID)
+
+	inputResample := elements.NewAudioResampleElement(sampleRateIn, 16000, 1, 1)
+
+	// VAD con Silence Suppression attivata (Mode: 1) per prevenire allucinazioni Whisper
+	vadElem, _ := elements.NewSileroVADElement(elements.SileroVADConfig{
+		ModelPath: cfg.VADModelPath,
+		Threshold: 0.5,
+		Mode:      1,
+	})
+	vadElem.Init(ctx)
+
+	asrElem, _ := elements.NewWhisperSTTElement(elements.WhisperSTTConfig{
+		APIKey:     cfg.OpenAIKey,
+		Language:   "it",
+		Model:      "whisper-1",
+		SampleRate: 16000,
+	})
+
+	chatElem, _ := elements.NewChatElement(elements.ChatConfig{
+		APIKey:       cfg.OpenAIKey,
+		Model:        "gpt-4o-mini",
+		SystemPrompt: cfg.SystemPrompt,
+		Streaming:    true,
+	})
+
+	ttsElem := elements.NewUniversalTTSElement(tts.NewOpenAITTSProvider(cfg.OpenAIKey))
+	ttsElem.SetVoice(cfg.Voice)
+
+	pipe.AddElements([]pipeline.Element{inputResample, vadElem, asrElem, chatElem, ttsElem})
+
+	pipe.Link(inputResample, vadElem)
+	pipe.Link(vadElem, asrElem)
+	pipe.Link(asrElem, chatElem)
+	pipe.Link(chatElem, ttsElem)
+
+	return pipe, inputResample.InChan, ttsElem.OutChan, nil
+}
+
+// --- UTILS ---
+
+type PipelineConfig struct {
+	OpenAIKey    string
+	VADModelPath string
+	Voice        string
+	SystemPrompt string
+}
+
+func findVADModel() string {
+	// Since main.go is in the root, and models are in /models
+	paths := []string{
+		"models/silero_vad.onnx",      // Standard path from root
+		"./models/silero_vad.onnx",    // Explicit relative
+		"/app/models/silero_vad.onnx", // Absolute path for Docker
+	}
+
+	for _, p := range paths {
+		// Check if file exists and we can access it
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			abs, _ := filepath.Abs(p)
+			log.Printf("[VAD] Model found at: %s", abs)
+			return abs
+		}
+	}
+
+	log.Printf("[ERROR] VAD Model NOT FOUND in any of the searched paths!")
+	return ""
+}
+
+func getEnv(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
+}

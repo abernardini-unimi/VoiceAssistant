@@ -1,0 +1,508 @@
+package custom_elements
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"math"
+	"os"
+	"strconv"
+	"sync"
+
+	"github.com/realtime-ai/realtime-ai/pkg/pipeline"
+	ort "github.com/yalue/onnxruntime_go"
+)
+
+// PADModelConfig mappa la struttura del config.json
+type PADModelConfig struct {
+	Id2Label map[string]string `json:"id2label"`
+}
+
+// PADManager gestisce l'analisi emotiva in background e mantiene lo stato attuale
+type PADManager struct {
+	audioMu          sync.Mutex
+	audioBuf         []float32
+	samplesSinceLast int
+	isSpeaking       bool
+
+	stateMu    sync.Mutex
+	padResults []map[string]float64
+
+	wg sync.WaitGroup
+
+	// --- NUOVI CAMPI PER LA MEMORIA A LUNGO TERMINE ---
+	stepCounter int
+	history     []map[string]float64
+
+	onnxPath   string
+	configPath string
+	config     PADModelConfig
+
+	session *ort.DynamicAdvancedSession
+	options *ort.SessionOptions
+
+	initOnce sync.Once
+	isReady  bool
+}
+
+func NewPADManager(onnxPath, configPath string) *PADManager {
+	fileConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		log.Printf("[PAD] Errore lettura config: %v", err)
+		return nil
+	}
+	var config PADModelConfig
+	if err := json.Unmarshal(fileConfig, &config); err != nil {
+		log.Printf("[PAD] Errore parsing config: %v", err)
+		return nil
+	}
+	return &PADManager{
+		onnxPath:    onnxPath,
+		configPath:  configPath,
+		config:      config,
+		isSpeaking:  false,
+		padResults:  make([]map[string]float64, 0),
+		stepCounter: 0,                                 // Inizializza a zero
+		history:     make([]map[string]float64, 0),
+	}
+}
+
+func (m *PADManager) InitSession() {
+	m.initOnce.Do(func() {
+		opts, err := ort.NewSessionOptions()
+		if err != nil {
+			log.Printf("[PAD] Errore creazione opzioni ONNX: %v", err)
+			return
+		}
+
+		session, err := ort.NewDynamicAdvancedSession(
+			m.onnxPath,
+			[]string{"input_values", "attention_mask"}, // ← aggiunto
+			[]string{"logits"},
+			opts,
+		)
+		if err != nil {
+			log.Printf("[PAD] Errore avvio ONNX: %v", err)
+			opts.Destroy()
+			return
+		}
+
+		m.session = session
+		m.options = opts
+		m.isReady = true
+		log.Println("[PAD] 🚀 Sessione ONNX Inizializzata. Motore (Media Sincronizzata) avviato!")
+	})
+}
+
+func (m *PADManager) SetSpeaking(speaking bool) {
+	m.audioMu.Lock()
+	defer m.audioMu.Unlock()
+	m.isSpeaking = speaking
+}
+
+func (m *PADManager) ClearState() {
+	m.audioMu.Lock()
+	m.audioBuf = nil
+	m.samplesSinceLast = 0
+	m.audioMu.Unlock()
+
+	m.stateMu.Lock()
+	m.padResults = make([]map[string]float64, 0)
+	m.stateMu.Unlock()
+}
+
+// func (m *PADManager) ProcessAudioChunk(pcm []float32) {
+// 	if !m.isReady {
+// 		return
+// 	}
+
+// 	m.audioMu.Lock()
+// 	m.audioBuf = append(m.audioBuf, pcm...)
+// 	m.samplesSinceLast += len(pcm)
+
+// 	if len(m.audioBuf) > 48000 {
+// 		m.audioBuf = m.audioBuf[len(m.audioBuf)-48000:]
+// 	}
+
+// 	shouldRun := false
+// 	var chunk []float32
+
+// 	if m.isSpeaking && m.samplesSinceLast >= 16000 && len(m.audioBuf) >= 16000 {
+// 		shouldRun = true
+// 		m.samplesSinceLast = 0
+// 		chunk = make([]float32, len(m.audioBuf))
+// 		copy(chunk, m.audioBuf)
+// 	}
+// 	m.audioMu.Unlock()
+
+// 	if shouldRun {
+// 		m.wg.Add(1) // <-- NUOVO: Aggiungiamo 1 al contatore delle inferenze in corso
+// 		go m.runInference(chunk)
+// 	}
+// }
+
+func (m *PADManager) ProcessAudioChunk(pcm []float32) {
+	if !m.isReady {
+		return
+	}
+
+	m.audioMu.Lock()
+	m.audioBuf = append(m.audioBuf, pcm...)
+	m.samplesSinceLast += len(pcm)
+
+	// Finestra: mantieni al massimo gli ultimi 3 secondi (48000 campioni)
+	if len(m.audioBuf) > 48000 {
+		m.audioBuf = m.audioBuf[len(m.audioBuf)-48000:]
+	}
+
+	shouldRun := false
+	var chunk []float32
+
+	// TRIGGER AGGIORNATO: Scatta esattamente ogni 3 secondi (48000 campioni)
+	if m.isSpeaking && m.samplesSinceLast >= 48000 && len(m.audioBuf) == 48000 {
+		shouldRun = true
+		m.samplesSinceLast = 0 // Azzera il contatore per i prossimi 3 secondi
+		chunk = make([]float32, len(m.audioBuf))
+		copy(chunk, m.audioBuf)
+	}
+	m.audioMu.Unlock()
+
+	if shouldRun {
+		m.wg.Add(1) // Aggiungiamo 1 al contatore delle inferenze in corso
+		go m.runInference(chunk)
+	}
+}
+
+func (m *PADManager) FlushAudio() {
+	if !m.isReady {
+		return
+	}
+
+	m.audioMu.Lock()
+	chunk := make([]float32, len(m.audioBuf))
+	copy(chunk, m.audioBuf)
+	m.audioBuf = nil
+	m.samplesSinceLast = 0
+	m.audioMu.Unlock()
+
+	if len(chunk) >= 8000 {
+		m.wg.Add(1) // <-- NUOVO: Aggiungiamo 1 al contatore per l'ultima inferenza
+		go m.runInference(chunk)
+	}
+}
+
+// 2. runInference — crea e passa attention_mask
+func (m *PADManager) runInference(audioFloat []float32) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[PAD] ❌ PANIC recuperato in runInference: %v", r)
+		}
+		m.wg.Done()
+	}()
+
+	var sum float64
+	for _, val := range audioFloat {
+        sum += float64(val)
+    }
+    mean := sum / float64(len(audioFloat))
+
+    var variance float64
+    for _, val := range audioFloat {
+        diff := float64(val) - mean
+        variance += diff * diff
+    }
+    variance /= float64(len(audioFloat))
+    stdDev := float32(math.Sqrt(variance + 1e-7))
+
+    for i := range audioFloat {
+        audioFloat[i] = (audioFloat[i] - float32(mean)) / stdDev
+    }
+
+    // --- Input: input_values ---
+    inputShape := ort.NewShape(1, int64(len(audioFloat)))
+    inputTensor, err := ort.NewTensor(inputShape, audioFloat)
+    if err != nil { return }
+    defer inputTensor.Destroy()
+
+    // --- Input: attention_mask (tutti 1, stesso shape di input_values) ---
+    maskData := make([]int64, len(audioFloat))
+    for i := range maskData {
+        maskData[i] = 1
+    }
+    maskShape := ort.NewShape(1, int64(len(maskData)))
+    maskTensor, err := ort.NewTensor(maskShape, maskData)
+    if err != nil { return }
+    defer maskTensor.Destroy()
+
+    // --- Output ---
+    outputShape := ort.NewShape(1, 3)
+    outputTensor, err := ort.NewEmptyTensor[float32](outputShape)
+    if err != nil { return }
+    defer outputTensor.Destroy()
+
+    // --- Esecuzione ---
+    err = m.session.Run(
+        []ort.ArbitraryTensor{inputTensor, maskTensor}, // ← aggiunto maskTensor
+        []ort.ArbitraryTensor{outputTensor},
+    )
+    if err != nil {
+        log.Printf("[PAD] Errore esecuzione modello: %v", err)
+        return
+    }
+
+    // --- Resto invariato ---
+    valori := outputTensor.GetData()
+    risultatoParziale := make(map[string]float64)
+    for i, val := range valori {
+        chiaveStr := strconv.Itoa(i)
+        label, ok := m.config.Id2Label[chiaveStr]
+        if !ok {
+            label = fmt.Sprintf("classe_%d", i)
+        }
+        risultatoParziale[label] = float64(val)
+    }
+
+    m.stateMu.Lock()
+    m.padResults = append(m.padResults, risultatoParziale)
+    logMap := make(map[string]float64)
+    for k, v := range risultatoParziale {
+        logMap[k] = math.Round(v*10000) / 10000
+    }
+    m.stateMu.Unlock()
+
+    jsonLog, _ := json.Marshal(logMap)
+    log.Printf("🎛️ [PAD] Rilevamento intermedio aggiunto: %s", string(jsonLog))
+}
+
+// func (m *PADManager) GetAndClearCurrentState() string {
+// 	log.Println("[PAD] ⏳ Attendo la fine di tutti i calcoli ONNX in sospeso...")
+// 	m.wg.Wait()
+// 	log.Println("[PAD] ✅ Tutti i calcoli terminati. Genero la media e aggiorno lo storico.")
+
+// 	m.stateMu.Lock()
+// 	defer m.stateMu.Unlock()
+
+// 	if len(m.padResults) == 0 {
+// 		return ""
+// 	}
+
+// 	// 1. Calcola la Media Matematica
+// 	mediaFinale := map[string]float64{"arousal": 0, "dominance": 0, "valence": 0}
+// 	for _, res := range m.padResults {
+// 		for k, v := range res {
+// 			mediaFinale[k] += v
+// 		}
+// 	}
+
+// 	numRisultati := float64(len(m.padResults))
+// 	for k := range mediaFinale {
+// 		mediaFinale[k] = math.Round((mediaFinale[k]/numRisultati)*10000) / 10000
+// 	}
+
+// 	// 2. Incrementa lo Step della conversazione
+// 	m.stepCounter++
+
+// 	// 3. Crea il record per lo storico
+// 	recordStorico := map[string]interface{}{
+// 		"step":   m.stepCounter,
+// 		"valori": mediaFinale,
+// 	}
+
+// 	// 4. Salva nello storico globale
+// 	m.history = append(m.history, recordStorico)
+
+// 	// 5. Prepara il pacchetto JSON completo per l'LLM
+// 	outputData := map[string]interface{}{
+// 		"step_corrente":    m.stepCounter,
+// 		"emozione_attuale": mediaFinale,
+// 		"storico_emozioni": m.history,
+// 	}
+
+// 	jsonOutput, _ := json.MarshalIndent(outputData, "", "    ")
+
+// 	// Svuota SOLO i risultati temporanei della frase appena detta
+// 	m.padResults = make([]map[string]float64, 0)
+	
+// 	log.Printf("[PAD] 📊 Media calcolata (Step %d).", m.stepCounter)
+// 	return string(jsonOutput)
+// }
+
+func (m *PADManager) GetAndClearCurrentState() string {
+	log.Println("[PAD] ⏳ Attendo la fine di tutti i calcoli ONNX in sospeso...")
+	m.wg.Wait()
+	log.Println("[PAD] ✅ Tutti i calcoli terminati. Genero la media comparativa.")
+
+	m.stateMu.Lock()
+	defer m.stateMu.Unlock()
+
+	if len(m.padResults) == 0 {
+		return ""
+	}
+
+	// 1. Calcola la Media Matematica della frase ATTUALE
+	mediaAttuale := map[string]float64{"arousal": 0, "dominance": 0, "valence": 0}
+	for _, res := range m.padResults {
+		for k, v := range res {
+			mediaAttuale[k] += v
+		}
+	}
+	numRisultati := float64(len(m.padResults))
+	for k := range mediaAttuale {
+		mediaAttuale[k] = math.Round((mediaAttuale[k]/numRisultati)*10000) / 10000
+	}
+
+	// 2. Calcola la Media Storica (di tutti gli step PRECEDENTI)
+	mediaStorica := map[string]float64{"arousal": 0, "dominance": 0, "valence": 0}
+	if len(m.history) > 0 {
+		for _, oldRes := range m.history {
+			mediaStorica["arousal"] += oldRes["arousal"]
+			mediaStorica["dominance"] += oldRes["dominance"]
+			mediaStorica["valence"] += oldRes["valence"]
+		}
+		numStorico := float64(len(m.history))
+		for k := range mediaStorica {
+			mediaStorica[k] = math.Round((mediaStorica[k]/numStorico)*10000) / 10000
+		}
+	} else {
+		// Se è il primissimo step, la media storica coincide con quella attuale
+		mediaStorica = mediaAttuale
+	}
+
+	// 3. Incrementa il contatore degli step
+	m.stepCounter++
+
+	// 4. Salva l'emozione attuale nello storico interno per i prossimi calcoli
+	m.history = append(m.history, mediaAttuale)
+
+	// 5. Prepara il pacchetto JSON ottimizzato e formattato correttamente per l'LLM
+	outputData := map[string]interface{}{
+		"step_corrente":            m.stepCounter,
+		"emozione_attuale":         mediaAttuale,
+		"media_storica_precedente": mediaStorica,
+	}
+
+	// Formattazione JSON rigorosa con 4 spazi
+	jsonOutput, _ := json.MarshalIndent(outputData, "", "    ")
+
+	// 6. Svuota SOLO i risultati temporanei della frase appena detta
+	m.padResults = make([]map[string]float64, 0)
+	
+	log.Printf("[PAD] 📊 Analisi pronta (Step %d).", m.stepCounter)
+	return string(jsonOutput)
+}
+
+// --- ELEMENTI PIPELINE ---
+
+func bytesToFloat32(data []byte) []float32 {
+	numSamples := len(data) / 2
+	floats := make([]float32, numSamples)
+	for i := 0; i < numSamples; i++ {
+		s := int16(data[i*2]) | int16(data[i*2+1])<<8
+		floats[i] = float32(s) / 32768.0
+	}
+	return floats
+}
+
+type PADCollectorElement struct {
+	*pipeline.BaseElement
+	manager *PADManager
+}
+
+func NewPADCollectorElement(m *PADManager) *PADCollectorElement {
+	return &PADCollectorElement{
+		BaseElement: pipeline.NewBaseElement("pad-collector", 100),
+		manager:     m,
+	}
+}
+
+func (e *PADCollectorElement) Start(ctx context.Context) error {
+	startChan := make(chan pipeline.Event, 10)
+	stopChan := make(chan pipeline.Event, 10)
+
+	bus := e.BaseElement.Bus()
+	if bus != nil {
+		log.Println("[PAD] ✅ Bus connesso, iscrizione eventi VAD...")
+		bus.Subscribe(pipeline.EventVADSpeechStart, startChan)
+		bus.Subscribe(pipeline.EventVADSpeechEnd, stopChan)
+	}
+
+	go func() {
+		defer close(e.OutChan)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-startChan:
+				log.Println("[PAD] 🟢 Rubinetto Aperto (Inizio parlato - Taccuino azzerato)")
+				e.manager.ClearState()
+				e.manager.SetSpeaking(true)
+			case <-stopChan:
+				log.Println("[PAD] 🔴 Rubinetto Chiuso (Fine parlato, Flush finale in corso...)")
+				e.manager.SetSpeaking(false)
+				e.manager.FlushAudio()
+			case msg, ok := <-e.InChan:
+				if !ok { return }
+				
+				if msg.Type == pipeline.MsgTypeAudio && msg.AudioData != nil {
+					floats := bytesToFloat32(msg.AudioData.Data)
+					e.manager.ProcessAudioChunk(floats)
+				}
+				
+				select {
+				case e.OutChan <- msg:
+				case <-ctx.Done(): return
+				}
+			}
+		}
+	}()
+	return nil
+}
+
+type PADEnricherElement struct {
+	*pipeline.BaseElement
+	manager *PADManager
+}
+
+func NewPADEnricherElement(m *PADManager) *PADEnricherElement {
+	return &PADEnricherElement{
+		BaseElement: pipeline.NewBaseElement("pad-enricher", 100),
+		manager:     m,
+	}
+}
+
+func (e *PADEnricherElement) Start(ctx context.Context) error {
+	go func() {
+		defer close(e.OutChan)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-e.InChan:
+				if !ok { return }
+
+				if msg.TextData != nil && len(msg.TextData.Data) > 0 {
+					// Nessun delay forzato. La funzione GetAndClearCurrentState ora si 
+					// bloccherà naturalmente finché ONNX non avrà finito tutto il lavoro.
+					padState := e.manager.GetAndClearCurrentState()
+					
+					if padState != "" {
+						originalText := string(msg.TextData.Data)
+						nuovoTesto := fmt.Sprintf("%s\n\n[Analisi Acustica (Arousal, Dominance, Valence)]:\n%s\n(Modula il tono della risposta basandoti su questi parametri)", originalText, padState)
+						msg.TextData.Data = []byte(nuovoTesto)
+						log.Printf("[PAD] Inserito PAD nel prompt dell'LLM (Media Completa)")
+					} else {
+						log.Printf("[PAD] Nessun dato PAD disponibile, procedo con la sola trascrizione.")
+					}
+				}
+
+				select {
+				case e.OutChan <- msg:
+				case <-ctx.Done(): return
+				}
+			}
+		}
+	}()
+	return nil
+}
