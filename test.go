@@ -63,7 +63,7 @@ func main() {
     udpPort := getEnvInt("VOICE_ASSISTANT_UDP_PORT", defaultUDPPort)
     voice := getEnv("VOICE_ASSISTANT_VOICE", "Coral")
     
-    promptPath := "prompt/base_v4.txt"
+    promptPath := "prompt/base_v6.txt"
     promptBytes, err := os.ReadFile(promptPath)
     var systemPrompt string
     if err != nil {
