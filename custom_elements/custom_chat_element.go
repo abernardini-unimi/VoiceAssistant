@@ -23,15 +23,15 @@ var _ pipeline.Element = (*CustomChatElement)(nil)
 
 // LLMJSONResponse mappa il formato di output richiesto nel System Prompt
 type LLMJSONResponse struct {
-	Reasoning        string `json:"reasoning"`
-	SelectedStrategy string `json:"selected_strategy"`
-	EmotionDetected  string `json:"emotion_detected"`
-	TTSConfig        struct {
-		Speed float64 `json:"speed"`
-		Tone  string  `json:"tone"`
-		Pitch string  `json:"pitch"`
-	} `json:"tts_config"`
-	ResponseText string `json:"response_text"`
+    Reasoning        string `json:"reasoning"`
+    SelectedStrategy string `json:"selected_strategy"`
+    EmotionDetected  string `json:"emotion_detected"`
+    TTSConfig        struct {
+        Speed        float64 `json:"speed"`
+		Language     string  `json:"language"`
+        Instructions string  `json:"instructions"`
+    } `json:"tts_config"`
+    ResponseText string `json:"response_text"`
 }
 
 // CustomChatConfig holds configuration for the chat element
@@ -425,15 +425,16 @@ func (e *CustomChatElement) chatNonStreaming(ctx context.Context, sessionID stri
 		log.Printf("🧠 [Orchestratore] Emozione: %s | Strategia: %s", parsedResponse.EmotionDetected, parsedResponse.SelectedStrategy)
 		
 		// Costruiamo le istruzioni dinamiche per il tono della voce
-		dynamicInst := fmt.Sprintf("Speak with a %s tone and %s pitch. %s", 
-			parsedResponse.TTSConfig.Tone, 
-			parsedResponse.TTSConfig.Pitch,
-			"Concise response.")
+		// dynamicInst := fmt.Sprintf("Speak with a %s tone and %s pitch. %s", 
+		// 	parsedResponse.TTSConfig.Tone, 
+		// 	parsedResponse.TTSConfig.Pitch,
+		// 	"Concise response.")
 
 		options := map[string]interface{}{
-			"speed":        parsedResponse.TTSConfig.Speed,
-			"instructions": dynamicInst,
-		}
+            "speed":        parsedResponse.TTSConfig.Speed,
+            "language":     parsedResponse.TTSConfig.Language,
+            "instructions": parsedResponse.TTSConfig.Instructions,
+        }
 
 		// Inviamo al TTS il testo + le opzioni di velocità e tono
 		e.sendToTTS(parsedResponse.ResponseText, sessionID, true, options)
@@ -557,14 +558,21 @@ type AssistantTurn struct {
 }
 
 type TTSLog struct {
-	Speed float64 `json:"speed"`
-	Tone  string  `json:"tone"`
-	Pitch string  `json:"pitch"`
+    Speed        float64 `json:"speed"`
+    Language     string  `json:"language"` 
+    Instructions string  `json:"instructions"`
 }
 
 type AudioLog struct {
-	Current       map[string]interface{} `json:"current,omitempty"`
-	HistoricalAvg map[string]interface{} `json:"historical_avg,omitempty"`
+	Current       *AudioDataLog `json:"current,omitempty"`
+	HistoricalAvg *AudioDataLog `json:"historical_avg,omitempty"`
+}
+
+// Creiamo una struttura specifica. Emozioni è un RawMessage: Go non lo mescolerà!
+// step_corrente non è presente, quindi Go lo cancellerà automaticamente.
+type AudioDataLog struct {
+	Emozioni json.RawMessage        `json:"emozioni"`
+	PAD      map[string]interface{} `json:"pad"`
 }
 
 // PrintAndSaveSessionTranscript stampa la chat e la salva in un file JSON
@@ -625,19 +633,21 @@ func (e *CustomChatElement) PrintAndSaveSessionTranscript() {
 					
 					// 1. Parsing dati Attuali
 					currJsonStr := strings.TrimSpace(histParts[0])
-					var currMap map[string]interface{}
-					if err := json.Unmarshal([]byte(currJsonStr), &currMap); err == nil {
-						audioLog.Current = currMap
+					var currData AudioDataLog
+					if err := json.Unmarshal([]byte(currJsonStr), &currData); err == nil {
+						audioLog.Current = &currData
 					}
 
 					// 2. Parsing dati Storici
 					if len(histParts) > 1 {
 						instrParts := strings.Split(histParts[1], "(Istruzione interna:")
 						histJsonStr := strings.TrimSpace(instrParts[0])
-						var histMap map[string]interface{}
-						if err := json.Unmarshal([]byte(histJsonStr), &histMap); err == nil {
-							delete(histMap, "step_corrente") // Rimuoviamo questo dato per pulizia del JSON
-							audioLog.HistoricalAvg = histMap
+						var histData AudioDataLog
+						if err := json.Unmarshal([]byte(histJsonStr), &histData); err == nil {
+							// La chiave "step_corrente" viene eliminata automaticamente
+							// perché non esiste nella struct AudioDataLog!
+							// E l'ordine delle Emozioni rimane intatto grazie a json.RawMessage!
+							audioLog.HistoricalAvg = &histData
 						}
 					}
 				}
@@ -672,17 +682,16 @@ func (e *CustomChatElement) PrintAndSaveSessionTranscript() {
 
 			var parsed LLMJSONResponse
 			if err := json.Unmarshal([]byte(cleanContent), &parsed); err == nil {
-				// Successo! L'LLM ha risposto con un JSON, quindi popoliamo i campi puliti
-				assistantData.Text = parsed.ResponseText
-				assistantData.Reasoning = parsed.Reasoning
-				assistantData.SelectedStrategy = parsed.SelectedStrategy
-				assistantData.EmotionDetected = parsed.EmotionDetected
-				assistantData.TTSConfig = &TTSLog{
-					Speed: parsed.TTSConfig.Speed,
-					Tone:  parsed.TTSConfig.Tone,
-					Pitch: parsed.TTSConfig.Pitch,
-				}
-			}
+                assistantData.Text = parsed.ResponseText
+                assistantData.Reasoning = parsed.Reasoning
+                assistantData.SelectedStrategy = parsed.SelectedStrategy
+                assistantData.EmotionDetected = parsed.EmotionDetected
+                assistantData.TTSConfig = &TTSLog{
+                    Speed:        parsed.TTSConfig.Speed,
+					Language:     parsed.TTSConfig.Language, 
+                    Instructions: parsed.TTSConfig.Instructions, 
+                }
+            }
 
 			// Aggiungiamo la risposta dell'assistente al turno corrente
 			if currentTurn != nil {

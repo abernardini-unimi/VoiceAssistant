@@ -156,91 +156,93 @@ func (e *CustomUniversalTTSElement) Stop() error {
 
 // processMessages processes incoming text messages and synthesizes speech
 func (e *CustomUniversalTTSElement) processMessages(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case msg := <-e.BaseElement.InChan:
-			if msg.Type == pipeline.MsgTypeData && msg.TextData != nil {
-				text := string(msg.TextData.Data)
+    for {
+        select {
+        case <-ctx.Done():
+            return
+            
+        // 1. Aggiunto controllo "ok" per evitare Panic se InChan si chiude
+        case msg, ok := <-e.BaseElement.InChan:
+            if !ok {
+                return 
+            }
+            
+            if msg.Type == pipeline.MsgTypeData && msg.TextData != nil {
+                text := string(msg.TextData.Data)
 
-				// --- NUOVO: AGGIORNAMENTO DINAMICO PARAMETRI DA CHAT ---
-				if msg.Metadata != nil {
-					// Trasformiamo Metadata in una mappa leggibile
-					if meta, ok := msg.Metadata.(map[string]interface{}); ok {
-						
-						// 1. Applica la velocità (speed)
-						if speed, ok := meta["speed"].(float64); ok {
-							// Usiamo il metodo dell'elemento, non del provider direttamente
-							e.SetOption("speed", speed) 
-							log.Printf("[%s] ⚡ Velocità aggiornata: %.2f", e.provider.Name(), speed)
-						}
-						
-						// 2. Applica le istruzioni (tone/pitch)
-						if inst, ok := meta["instructions"].(string); ok {
-							// Qui dobbiamo fare un controllo: il provider supporta le istruzioni?
-							// Se stai usando OpenAI TTS del package realtime-ai, di solito è un puntatore
-							// che espone SetInstructions. Proviamo il type casting:
-							type instructionSetter interface {
-								SetInstructions(string)
-							}
-							if setter, ok := e.provider.(instructionSetter); ok {
-								setter.SetInstructions(inst)
-								log.Printf("[%s] 🎭 Tono aggiornato: %s", e.provider.Name(), inst)
-							}
-						}
-					}
-				}
-				// -------------------------------------------------------
+                // --- AGGIORNAMENTO DINAMICO PARAMETRI DA CHAT ---
+                if msg.Metadata != nil {
+                    if meta, ok := msg.Metadata.(map[string]interface{}); ok {
+                        
+                        // Applica la velocità
+                        if speed, ok := meta["speed"].(float64); ok {
+                            e.SetOption("speed", speed) 
+                            log.Printf("[%s] ⚡ Velocità: %.2f", e.provider.Name(), speed)
+                        }
+                        
+                        // 2. Applica le istruzioni usando direttamente SetOption
+                        if inst, ok := meta["instructions"].(string); ok {
+                            e.SetOption("instructions", inst)
+                            log.Printf("[%s] 🎭 Regia TTS: %s", e.provider.Name(), inst)
+                        }
 
-				// --- Creazione del contesto specifico per questa sintesi ---
-				e.reqMu.Lock()
-				msgCtx, cancelFunc := context.WithCancel(ctx)
-				e.currentReqCancel = cancelFunc
-				e.reqMu.Unlock()
+						// 3. Applica la Lingua 
+                        if lang, ok := meta["language"].(string); ok && lang != "" {
+                            e.SetLanguage(lang)
+                            log.Printf("[%s] 🌍 Lingua impostata su: %s", e.provider.Name(), lang)
+                        }
+                    }
+                }
+                // -------------------------------------------------------
 
-				handled := false
-				if e.streaming {
-					if streamProvider, ok := e.provider.(tts.StreamingTTSProvider); ok {
-						if err := e.streamAndOutput(msgCtx, streamProvider, text); err != nil {
-							if msgCtx.Err() == context.Canceled {
-								log.Printf("[%s] Streaming saltato/interrotto correttamente.", e.provider.Name())
-							} else {
-								log.Printf("[%s] Streaming failed: %v", e.provider.Name(), err)
-								e.publishError(fmt.Sprintf("Streaming failed: %v", err))
-							}
-						}
-						handled = true
-					}
-				}
+                // --- Creazione del contesto specifico per questa sintesi ---
+                e.reqMu.Lock()
+                msgCtx, cancelFunc := context.WithCancel(ctx)
+                e.currentReqCancel = cancelFunc
+                e.reqMu.Unlock()
 
-				if !handled {
-					if err := e.synthesizeAndOutput(msgCtx, text); err != nil {
-						if msgCtx.Err() == context.Canceled {
-							log.Printf("[%s] Sintesi saltata/interrotta correttamente.", e.provider.Name())
-						} else {
-							log.Printf("[%s] Failed to synthesize: %v", e.provider.Name(), err)
-							e.publishError(fmt.Sprintf("Failed to synthesize: %v", err))
-						}
-					}
-				}
+                handled := false
+                if e.streaming {
+                    if streamProvider, ok := e.provider.(tts.StreamingTTSProvider); ok {
+                        if err := e.streamAndOutput(msgCtx, streamProvider, text); err != nil {
+                            if msgCtx.Err() == context.Canceled {
+                                log.Printf("[%s] Streaming saltato/interrotto correttamente.", e.provider.Name())
+                            } else {
+                                log.Printf("[%s] Streaming failed: %v", e.provider.Name(), err)
+                                e.publishError(fmt.Sprintf("Streaming failed: %v", err))
+                            }
+                        }
+                        handled = true
+                    }
+                }
 
-				e.reqMu.Lock()
-				if e.currentReqCancel != nil {
-					e.currentReqCancel()
-					e.currentReqCancel = nil
-				}
-				e.reqMu.Unlock()
+                if !handled {
+                    if err := e.synthesizeAndOutput(msgCtx, text); err != nil {
+                        if msgCtx.Err() == context.Canceled {
+                            log.Printf("[%s] Sintesi saltata/interrotta correttamente.", e.provider.Name())
+                        } else {
+                            log.Printf("[%s] Failed to synthesize: %v", e.provider.Name(), err)
+                            e.publishError(fmt.Sprintf("Failed to synthesize: %v", err))
+                        }
+                    }
+                }
 
-			} else {
-				select {
-				case e.BaseElement.OutChan <- msg:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}
-	}
+                e.reqMu.Lock()
+                if e.currentReqCancel != nil {
+                    e.currentReqCancel()
+                    e.currentReqCancel = nil
+                }
+                e.reqMu.Unlock()
+
+            } else {
+                select {
+                case e.BaseElement.OutChan <- msg:
+                case <-ctx.Done():
+                    return
+                }
+            }
+        }
+    }
 }
 
 // streamAndOutput handles chunk-by-chunk reception

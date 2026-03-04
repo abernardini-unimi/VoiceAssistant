@@ -352,6 +352,14 @@ func (m *PADManager) GetAndClearCurrentState() (string, string) {
 	for k := range emoStorico { emoStorico[k] = math.Round((emoStorico[k]/numStorico)*10000) / 10000 }
 
 	// --- 4. Creazione JSON ---
+	// attualeData := map[string]interface{}{
+	// 	"pad":      padAttuale,
+	// 	"emozioni": buildOrderedEmotionJSON(emoAttuale),
+	// }
+
+	delete(padAttuale, "valence") 
+	delete(padStorico, "valence")
+
 	attualeData := map[string]interface{}{
 		"pad":      padAttuale,
 		"emozioni": buildOrderedEmotionJSON(emoAttuale),
