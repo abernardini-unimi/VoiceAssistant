@@ -1,1 +1,0 @@
-Custom voice assistant with the new custom components and Groq inference + straming response + optimize STT inference
