@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Voice Assistant</title>
+    <title>EVA (Empathic Vocal Agent) - Testing Portal</title>
     <style>
         * {
             box-sizing: border-box;
@@ -24,7 +24,7 @@
         h1 {
             text-align: center;
             margin-bottom: 8px;
-            font-size: 2rem;
+            font-size: 2.2rem;
             background: linear-gradient(90deg, #4ecdc4, #44a08d);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -34,7 +34,7 @@
             text-align: center;
             color: #888;
             margin-bottom: 30px;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
         }
         .card {
             background: rgba(255, 255, 255, 0.05);
@@ -106,6 +106,8 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
+            width: 100%;
+            justify-content: center;
         }
         .btn-primary {
             background: linear-gradient(135deg, #4ecdc4, #44a08d);
@@ -132,50 +134,7 @@
             display: flex;
             gap: 12px;
             flex-wrap: wrap;
-        }
-        .conversation {
-            background: #0a0a14;
-            border-radius: 12px;
-            padding: 16px;
-            min-height: 300px;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        .message {
-            margin-bottom: 16px;
-            padding: 12px 16px;
-            border-radius: 12px;
-            max-width: 85%;
-            animation: fadeIn 0.3s ease;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .message.user {
-            background: linear-gradient(135deg, #4ecdc4, #44a08d);
-            margin-left: auto;
-            color: #fff;
-        }
-        .message.assistant {
-            background: rgba(255, 255, 255, 0.1);
-            margin-right: auto;
-        }
-        .message.system {
-            background: rgba(255, 215, 0, 0.1);
-            border: 1px solid rgba(255, 215, 0, 0.3);
-            margin: 0 auto;
-            text-align: center;
-            font-size: 0.85rem;
-            color: #ffd93d;
-        }
-        .message .role {
-            font-size: 0.75rem;
-            opacity: 0.7;
-            margin-bottom: 4px;
-        }
-        .message .text {
-            line-height: 1.5;
+            margin-top: 20px;
         }
         .events-log {
             background: #0a0a14;
@@ -219,20 +178,154 @@
         audio {
             display: none;
         }
+        
+        /* Modifiche Info Box & Scenari Collapsible */
         .info-box {
             background: rgba(78, 205, 196, 0.1);
             border: 1px solid rgba(78, 205, 196, 0.3);
             border-radius: 12px;
-            padding: 16px;
+            padding: 20px;
             margin-bottom: 20px;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
+            line-height: 1.6;
         }
-        .info-box ul {
+        .info-box h3 {
+            color: #4ecdc4;
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+        }
+        .info-box ul.instructions {
             margin-left: 20px;
-            margin-top: 8px;
+            margin-bottom: 20px;
         }
-        .info-box li {
-            margin-bottom: 4px;
+        .info-box ul.instructions li {
+            margin-bottom: 8px;
+            color: #ddd;
+        }
+        
+        /* Stili per <details> e <summary> */
+        details.scenario-box {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            margin-bottom: 12px;
+            border-left: 4px solid #4ecdc4;
+            transition: all 0.3s ease;
+        }
+        details.scenario-box[open] {
+            background: rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        details.scenario-box summary {
+            padding: 16px;
+            font-size: 1.05rem;
+            font-weight: bold;
+            color: #ffd93d;
+            cursor: pointer;
+            list-style: none; 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            outline: none;
+        }
+        details.scenario-box summary::-webkit-details-marker {
+            display: none;
+        }
+        details.scenario-box summary::after {
+            content: '▼';
+            font-size: 0.8rem;
+            color: #4ecdc4;
+            transition: transform 0.3s ease;
+        }
+        details.scenario-box[open] summary::after {
+            transform: rotate(180deg);
+        }
+        .scenario-content {
+            padding: 0 16px 16px 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            margin-top: 5px;
+            padding-top: 15px;
+        }
+
+        .scenario-examples {
+            list-style-type: none;
+            margin-left: 0;
+            margin-top: 10px;
+        }
+        .scenario-examples li {
+            margin-bottom: 10px;
+            color: #e0e0e0;
+            padding-left: 15px;
+            position: relative;
+            font-style: italic;
+        }
+        .scenario-examples li::before {
+            content: "•";
+            color: #4ecdc4;
+            position: absolute;
+            left: 0;
+            font-style: normal;
+        }
+
+        /* Stili Form Feedback */
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #eee;
+        }
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .radio-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+        .radio-item input[type="radio"] {
+            cursor: pointer;
+            accent-color: #4ecdc4;
+            width: 16px;
+            height: 16px;
+        }
+        textarea, input[type="text"], select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            font-family: inherit;
+            resize: vertical;
+        }
+        textarea:focus, input[type="text"]:focus, select:focus {
+            outline: none;
+            border-color: #4ecdc4;
+            box-shadow: 0 0 0 2px rgba(78, 205, 196, 0.2);
+        }
+        .scale-group {
+            display: flex;
+            justify-content: space-between;
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .scale-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        .scale-label {
+            font-size: 0.8rem;
             color: #aaa;
         }
         .session-id {
@@ -244,20 +337,94 @@
 </head>
 <body>
     <div class="container">
-        <h1>Web Voice Assistant</h1>
-        <p class="subtitle">Real-time voice conversation powered by AI</p>
+        <h1>EVA (Empathic Vocal Agent)</h1>
+        <p class="subtitle">Testing Portal per Assistenza Clienti Intelligente</p>
 
         <div class="info-box">
-            <strong>How to use:</strong>
-            <ul>
-                <li>Click "Start Conversation" and allow microphone access</li>
-                <li>Speak naturally - the assistant will respond</li>
-                <li>You can interrupt the assistant anytime by speaking</li>
+            <h3>🎭 Come testare l'Assistente</h3>
+            <p style="margin-bottom: 15px; color: #ddd;">Stiamo testando la capacità di EVA di adattare il proprio tono di voce e le proprie risposte in base all'<strong>emozione</strong> dell'utente. Segui questi passaggi:</p>
+            
+            <ul class="instructions">
+                <li>Clicca su <strong>"Start Conversation"</strong> e attendi che l'assistente si presenti.</li>
+                <li>Espandi uno degli scenari qui sotto e <strong>recita una delle frasi con enfasi</strong> (immedesimati!).</li>
+                <li>Durante la stessa conversazione, puoi testare stati d'animo diversi (es. parti arrabbiato, poi calmati e ringrazia) per valutare l'adattamento in tempo reale di EVA.</li>
+                <li>Sperimenta: puoi interrompere l'assistente in qualsiasi momento parlando sopra di lui!</li>
+                <li>Una volta terminata la conversazione, clicca su <strong>"End Conversation"</strong>.</li>
+                <li>Compila il modulo di feedback a fine pagina per valutare l'esperienza.</li>
+            </ul>
+            
+            <details class="scenario-box">
+                <summary>1. Neutro / Informativo</summary>
+                <div class="scenario-content">
+                    <p style="font-size: 0.85rem; color: #aaa;">Fai una domanda generica con voce normale e tranquilla.</p>
+                    <ul class="scenario-examples">
+                        <li>"Buongiorno, vorrei avere delle informazioni sulle procedure per aggiornare i miei dati di fatturazione."</li>
+                        <li>"Salve, mi saprebbe dire quali sono gli orari di apertura della filiale più vicina?"</li>
+                        <li>"Vorrei sapere qual è il saldo attuale del mio conto, per favore."</li>
+                    </ul>
+                </div>
+            </details>
+            
+            <details class="scenario-box">
+                <summary>2. Rabbia / Frustrazione</summary>
+                <div class="scenario-content">
+                    <p style="font-size: 0.85rem; color: #aaa;">Alza la voce, mostrati spazientito o lamentati per un disservizio.</p>
+                    <ul class="scenario-examples">
+                        <li>"È una vergogna! Sto aspettando da dieci giorni la riparazione, pretendo che si risolva subito!"</li>
+                        <li>"Sono stanco di chiamare! Nessuno mi sa dare una risposta e sto pagando per un servizio che non funziona!"</li>
+                        <li>"Ancora problemi con l'app! È la terza volta che mi si blocca mentre faccio un pagamento, risolvete immediatamente."</li>
+                    </ul>
+                </div>
+            </details>
+            
+            <details class="scenario-box">
+                <summary>3. Confusione / Insicurezza</summary>
+                <div class="scenario-content">
+                    <p style="font-size: 0.85rem; color: #aaa;">Parla a voce un po' più bassa, mostrati esitante e dubbioso.</p>
+                    <ul class="scenario-examples">
+                        <li>"Scusi, non sono tanto pratico, mi chiede un codice ma non so dove cercarlo, ho paura di fare danni..."</li>
+                        <li>"Non ho capito bene l'email che mi è arrivata... devo cliccare sul link o aspettare una vostra chiamata? Sono un po' perso."</li>
+                        <li>"Ho provato a fare come mi avete detto, ma ora c'è una spia rossa lampeggiante e non so cosa toccare, mi aiuti per favore."</li>
+                    </ul>
+                </div>
+            </details>
+
+            <details class="scenario-box">
+                <summary>4. Urgenza</summary>
+                <div class="scenario-content">
+                    <p style="font-size: 0.85rem; color: #aaa;">Parla in modo concitato, ansioso e veloce.</p>
+                    <ul class="scenario-examples">
+                        <li>"Vi prego bloccate subito la mia carta! L'ho appena persa, fate in fretta prima che la usino!"</li>
+                        <li>"Aiuto, sento un forte odore di gas dal contatore appena installato, mandate qualcuno subito!"</li>
+                        <li>"Mi hanno appena rubato il telefono con tutti i dati aziendali, disattivate immediatamente l'account, è urgentissimo!"</li>
+                    </ul>
+                </div>
+            </details>
+
+            <details class="scenario-box">
+                <summary>5. Soddisfazione / Entusiasmo</summary>
+                <div class="scenario-content">
+                    <p style="font-size: 0.85rem; color: #aaa;">Parla con un sorriso, voce brillante e felice per un problema risolto.</p>
+                    <ul class="scenario-examples">
+                        <li>"Perfetto! Il tecnico è appena andato via e funziona tutto alla grande, grazie mille per l'assistenza super veloce!"</li>
+                        <li>"Wow, non mi aspettavo che risolveste il problema in soli cinque minuti, siete stati eccezionali!"</li>
+                        <li>"Che bella notizia! Grazie davvero, mi avete tolto un peso enorme, servizio clienti fantastico!"</li>
+                    </ul>
+                </div>
+            </details>
+        </div>
+
+        <div class="info-box" style="background: rgba(255, 217, 61, 0.1); border-color: rgba(255, 217, 61, 0.3);">
+            <h3 style="color: #ffd93d;">⚠️ Da sapere prima di iniziare</h3>
+            <ul class="instructions">
+                <li><strong>Tempi di risposta:</strong> Il sistema attualmente impiega tra i <strong>4 e i 5 secondi</strong> per elaborare e generare ogni risposta. Ti preghiamo di attendere pazientemente il tuo turno.</li>
+                <li><strong>Usa le cuffie:</strong> È <strong>fortemente consigliato</strong> l'uso delle cuffie durante il test. Questo evita fastidiosi ritorni audio (eco) che potrebbero confondere l'assistente.</li>
+                <li><strong>Qualità audio iniziale:</strong> A causa dell'inizializzazione dello streaming in tempo reale, potrebbe capitare che la primissima parola pronunciata da EVA risulti leggermente storpiata o metallica.</li>
             </ul>
         </div>
 
         <div class="card">
-            <h2>Connection</h2>
+            <h2>Stato Connessione</h2>
             <div class="status-bar">
                 <div class="status-item">
                     <div class="status-dot" id="connectionDot"></div>
@@ -273,6 +440,10 @@
                 </div>
                 <span class="session-id" id="sessionId"></span>
             </div>
+            
+            <div class="visualizer" id="visualizer">
+                </div>
+
             <div class="controls">
                 <button class="btn btn-primary" id="connectBtn" onclick="toggleConnection()">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -284,25 +455,142 @@
                     Start Conversation
                 </button>
             </div>
-            <div class="visualizer" id="visualizer">
-                <!-- Bars will be generated by JS -->
-            </div>
+            
             <audio id="remoteAudio" autoplay></audio>
         </div>
 
-        <div class="card">
-            <h2>Conversation</h2>
-            <div class="conversation" id="conversation">
-                <div class="message system">
-                    <div class="text">Click "Start Conversation" to begin</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
+        <div class="card" style="display: none;">
             <h2>Events</h2>
             <div class="events-log" id="eventsLog"></div>
         </div>
+
+        <div class="card">
+            <h2>📝 Modulo di Feedback</h2>
+            <p style="color: #aaa; margin-bottom: 20px; font-size: 0.9rem;">Compila questo modulo al termine del test per aiutarci a calibrare le reazioni dell'assistente EVA.</p>
+            
+            <form id="feedbackForm" onsubmit="event.preventDefault(); alert('Grazie per il feedback! I tuoi dati ci aiuteranno a migliorare EVA.');">
+                
+                <h3>Sezione 1: L'atteggiamento di EVA</h3><br>
+                
+                <div class="form-group">
+                    <label class="form-label">1. Tono di voce: Il modo di parlare dell'assistente era adatto all'emozione che stavi recitando?</label>
+                    <div class="scale-group">
+                        <span class="scale-label">Inadeguato</span>
+                        <label class="scale-item"><input type="radio" name="sintonia" value="1"> 1</label>
+                        <label class="scale-item"><input type="radio" name="sintonia" value="2"> 2</label>
+                        <label class="scale-item"><input type="radio" name="sintonia" value="3" checked> 3</label>
+                        <label class="scale-item"><input type="radio" name="sintonia" value="4"> 4</label>
+                        <label class="scale-item"><input type="radio" name="sintonia" value="5"> 5</label>
+                        <span class="scale-label">Perfetto</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">2. Naturalezza: La voce ti è sembrata un "robot" o simile a una persona vera?</label>
+                    <div class="scale-group">
+                        <span class="scale-label">Molto finta (Robot)</span>
+                        <label class="scale-item"><input type="radio" name="acting" value="1"> 1</label>
+                        <label class="scale-item"><input type="radio" name="acting" value="2"> 2</label>
+                        <label class="scale-item"><input type="radio" name="acting" value="3" checked> 3</label>
+                        <label class="scale-item"><input type="radio" name="acting" value="4"> 4</label>
+                        <label class="scale-item"><input type="radio" name="acting" value="5"> 5</label>
+                        <span class="scale-label">Molto umana</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">3. Velocità: Come ti è sembrato il ritmo con cui l'assistente parlava?</label>
+                    <div class="radio-group">
+                        <label class="radio-item"><input type="radio" name="speed" value="slow"> Troppo lento, mi ha annoiato</label>
+                        <label class="radio-item"><input type="radio" name="speed" value="perfect" checked> Giusto per la situazione</label>
+                        <label class="radio-item"><input type="radio" name="speed" value="fast"> Troppo veloce o di fretta</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">4. Empatia vs Soluzione: Come ha gestito il tuo problema?</label>
+                    <div class="radio-group">
+                        <label class="radio-item"><input type="radio" name="balance" value="too_empathic"> Si è persa in troppe scuse rallentando la soluzione</label>
+                        <label class="radio-item"><input type="radio" name="balance" value="perfect" checked> Mi ha rassicurato e ha subito cercato di risolvere</label>
+                        <label class="radio-item"><input type="radio" name="balance" value="too_mechanical"> È andata dritta al punto, ma in modo troppo freddo/meccanico</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">5. Cambi di umore: Se durante la chiamata ti sei calmato (o arrabbiato), come ha reagito EVA?</label>
+                    <div class="radio-group">
+                        <label class="radio-item"><input type="radio" name="dynamic_adapt" value="not_tested" checked> Non ho cambiato umore durante il test</label>
+                        <label class="radio-item"><input type="radio" name="dynamic_adapt" value="good"> Ha adattato la sua voce in modo rapido e naturale al mio cambiamento</label>
+                        <label class="radio-item"><input type="radio" name="dynamic_adapt" value="bad"> È rimasta bloccata sull'emozione di prima, sembrando fuori luogo</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">6. Fiducia: Ti ha trasmesso sicurezza? Ti sei fidato delle soluzioni che proponeva?</label>
+                    <div class="scale-group">
+                        <span class="scale-label">Per nulla (Confusa)</span>
+                        <label class="scale-item"><input type="radio" name="authority" value="1"> 1</label>
+                        <label class="scale-item"><input type="radio" name="authority" value="2"> 2</label>
+                        <label class="scale-item"><input type="radio" name="authority" value="3" checked> 3</label>
+                        <label class="scale-item"><input type="radio" name="authority" value="4"> 4</label>
+                        <label class="scale-item"><input type="radio" name="authority" value="5"> 5</label>
+                        <span class="scale-label">Totalmente</span>
+                    </div>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 30px 0;">
+                <h3>Sezione 2: Esperienza della chiamata</h3><br>
+
+                <div class="form-group">
+                    <label class="form-label">7. Tempi di attesa: Quanto ci metteva a risponderti dopo che avevi finito di parlare?</label>
+                    <div class="scale-group">
+                        <span class="scale-label">Troppo lenta</span>
+                        <label class="scale-item"><input type="radio" name="latency" value="1"> 1</label>
+                        <label class="scale-item"><input type="radio" name="latency" value="2"> 2</label>
+                        <label class="scale-item"><input type="radio" name="latency" value="3" checked> 3</label>
+                        <label class="scale-item"><input type="radio" name="latency" value="4"> 4</label>
+                        <label class="scale-item"><input type="radio" name="latency" value="5"> 5</label>
+                        <span class="scale-label">Molto veloce</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">8. Interruzioni: Se hai provato a parlarle sopra mentre lei stava già parlando, cosa è successo?</label>
+                    <div class="radio-group">
+                        <label class="radio-item"><input type="radio" name="bargein" value="ignored"> Ha continuato a parlare ignorandomi</label>
+                        <label class="radio-item"><input type="radio" name="bargein" value="delayed"> Si è zittita, ma in ritardo (ci ha messo un po' a capirlo)</label>
+                        <label class="radio-item"><input type="radio" name="bargein" value="natural" checked> Si è fermata subito, come farebbe una persona vera</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">9. In quale di queste situazioni l'assistente ti è sembrata PIÙ brava e realistica?</label>
+                    <select name="best_scenario">
+                        <option value="none" selected disabled>Scegli un'opzione...</option>
+                        <option value="neutro">1. Domande normali e informative</option>
+                        <option value="rabbia">2. Quando ero arrabbiato o frustrato</option>
+                        <option value="confusione">3. Quando ero confuso o insicuro</option>
+                        <option value="urgenza">4. Quando avevo molta urgenza</option>
+                        <option value="entusiasmo">5. Quando ero soddisfatto o felice</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">10. Il punto debole: C'è stato un momento in cui ti è sembrata finta o in cui ha sbagliato risposta?</label>
+                    <textarea name="weak_point" rows="3" placeholder="Es: Quando ero arrabbiato mi ha risposto sorridendo, oppure ha usato parole troppo difficili..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">11. Problemi tecnici e consigli (opzionale)</label>
+                    <textarea name="notes" rows="3" placeholder="Hai sentito rumori strani? La pagina si è bloccata? Scrivi qui i problemi tecnici o i tuoi consigli..."></textarea>
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
+                    Invia Feedback
+                </button>
+            </form>
+        </div>
+
     </div>
 
     <script>
@@ -315,7 +603,6 @@
         let analyser = null;
         let animationId = null;
 
-        // DOM elements
         const connectionDot = document.getElementById('connectionDot');
         const connectionStatus = document.getElementById('connectionStatus');
         const vadDot = document.getElementById('vadDot');
@@ -324,12 +611,10 @@
         const aiStatus = document.getElementById('aiStatus');
         const sessionIdEl = document.getElementById('sessionId');
         const connectBtn = document.getElementById('connectBtn');
-        const conversation = document.getElementById('conversation');
         const eventsLog = document.getElementById('eventsLog');
         const remoteAudio = document.getElementById('remoteAudio');
         const visualizer = document.getElementById('visualizer');
 
-        // Initialize visualizer bars
         for (let i = 0; i < 20; i++) {
             const bar = document.createElement('div');
             bar.className = 'visualizer-bar';
@@ -381,27 +666,6 @@
             eventsLog.scrollTop = eventsLog.scrollHeight;
         }
 
-        function addMessage(role, text) {
-            // Remove system message if present
-            const systemMsg = conversation.querySelector('.message.system');
-            if (systemMsg) systemMsg.remove();
-
-            const messageEl = document.createElement('div');
-            messageEl.className = 'message ' + role;
-            messageEl.innerHTML = `
-                <div class="role">${role === 'user' ? 'You' : 'Assistant'}</div>
-                <div class="text">${escapeHtml(text)}</div>
-            `;
-            conversation.appendChild(messageEl);
-            conversation.scrollTop = conversation.scrollHeight;
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
         async function toggleConnection() {
             if (isConnected) {
                 disconnect();
@@ -415,7 +679,6 @@
                 updateConnectionStatus('connecting', 'Connecting...');
                 connectBtn.disabled = true;
 
-                // Get microphone access
                 localStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: true,
@@ -425,13 +688,10 @@
                     }
                 });
 
-                // Setup audio visualization
                 setupVisualizer(localStream);
 
-                // Create peer connection
                 pc = new RTCPeerConnection({ iceServers: [] });
 
-                // Create data channel
                 dc = pc.createDataChannel('realtime-api', { ordered: true });
                 dc.binaryType = 'arraybuffer';
 
@@ -463,64 +723,58 @@
                     logEvent('client', 'DataChannel closed');
                 };
 
-                // Handle remote audio
                 pc.ontrack = (event) => {
                     logEvent('server', 'Audio track received');
-                    
-                    // --- INIZIO DEBUG ---
                     console.log("📡 EVENTO ONTRACK:", event);
-                    
                     const stream = event.streams[0];
                     console.log("🌊 Stream ricevuto:", stream);
 
                     if (stream) {
                         const tracks = stream.getAudioTracks();
                         console.log("🎵 Tracce audio trovate:", tracks.length);
-                        
                         if (tracks.length > 0) {
                             const track = tracks[0];
-                            console.log("   - Stato traccia:", track.readyState); // Dovrebbe essere 'live'
-                            console.log("   - Abilitata:", track.enabled);      // Dovrebbe essere true
-                            console.log("   - Muta:", track.muted);             // Dovrebbe essere false
+                            console.log("   - Stato traccia:", track.readyState);
+                            console.log("   - Abilitata:", track.enabled);      
+                            console.log("   - Muta:", track.muted);             
                         } else {
                             console.warn("⚠️ Lo stream non ha tracce audio!");
                         }
                     } else {
                         console.error("❌ Nessuno stream presente nell'evento!");
                     }
-                    // --- FINE DEBUG ---
 
                     remoteAudio.srcObject = event.streams[0];
                 };
 
-                // Add local audio
                 const audioTrack = localStream.getAudioTracks()[0];
                 pc.addTrack(audioTrack, localStream);
 
-                // Connection state
                 pc.onconnectionstatechange = () => {
                     logEvent('client', 'Connection: ' + pc.connectionState);
                     if (pc.connectionState === 'connected') {
                         isConnected = true;
                         updateConnectionStatus('connected', 'Connected');
                         connectBtn.disabled = false;
+                        
+                        // Modifica: Il bottone rimane primario (azzurro) in attesa della voce
                         connectBtn.innerHTML = `
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
                             </svg>
-                            End Conversation
+                            Waiting for EVA...
                         `;
-                        connectBtn.className = 'btn btn-danger';
+                        connectBtn.className = 'btn btn-primary'; 
+                        
                     } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
                         handleDisconnect();
                     }
                 };
 
-                // Create and send offer
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
 
-                // Wait for ICE
                 await new Promise((resolve) => {
                     if (pc.iceGatheringState === 'complete') {
                         resolve();
@@ -531,7 +785,6 @@
                     }
                 });
 
-                // Send to server
                 const response = await fetch('/session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -597,7 +850,6 @@
             `;
             connectBtn.className = 'btn btn-primary';
 
-            // Reset visualizer
             const bars = visualizer.querySelectorAll('.visualizer-bar');
             bars.forEach(bar => bar.style.height = '4px');
         }
@@ -616,62 +868,39 @@
         function handleServerEvent(event) {
             logEvent('server', event.type);
 
+            // Nuova funzione interna per attivare il bottone rosso
+            const turnButtonRed = () => {
+                if (connectBtn.className.includes('btn-danger')) return; // Lo fa solo la prima volta
+                connectBtn.innerHTML = `
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    </svg>
+                    End Conversation
+                `;
+                connectBtn.className = 'btn btn-danger';
+            };
+
             switch (event.type) {
                 case 'session.created':
                     break;
-
                 case 'input_audio_buffer.speech_started':
                     updateVADStatus(true);
                     break;
-
                 case 'input_audio_buffer.speech_stopped':
                     updateVADStatus(false);
                     updateAIStatus('processing');
                     break;
-
-                case 'conversation.item.created':
-                    if (event.item?.role === 'user' && event.item?.content) {
-                        const text = event.item.content.find(c => c.type === 'input_text' || c.type === 'text');
-                        if (text?.text) {
-                            addMessage('user', text.text);
-                        }
-                    }
-                    break;
-
                 case 'response.created':
                     updateAIStatus('responding');
+                    turnButtonRed(); // <--- Il bottone diventa rosso qui!
                     break;
-
-                case 'response.text.delta':
-                    // Handle streaming text
-                    break;
-
-                case 'response.text.done':
-                    if (event.text) {
-                        addMessage('assistant', event.text);
-                    }
-                    break;
-
                 case 'response.done':
                     updateAIStatus('ready');
-                    if (event.response?.output) {
-                        event.response.output.forEach(item => {
-                            if (item.content) {
-                                item.content.forEach(c => {
-                                    if (c.type === 'text' && c.text) {
-                                        addMessage('assistant', c.text);
-                                    }
-                                });
-                            }
-                        });
-                    }
                     break;
-
                 case 'response.interrupted':
                     updateAIStatus('ready');
                     logEvent('server', 'Response interrupted by user');
                     break;
-
                 case 'error':
                     console.error('Server error:', event.error);
                     logEvent('server', 'Error: ' + (event.error?.message || 'Unknown'));
@@ -692,16 +921,13 @@
 
             function animate() {
                 analyser.getByteFrequencyData(dataArray);
-
                 bars.forEach((bar, i) => {
                     const value = dataArray[i] || 0;
                     const height = Math.max(4, (value / 255) * 40);
                     bar.style.height = height + 'px';
                 });
-
                 animationId = requestAnimationFrame(animate);
             }
-
             animate();
         }
     </script>

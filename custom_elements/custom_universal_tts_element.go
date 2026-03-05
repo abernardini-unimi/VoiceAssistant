@@ -244,7 +244,6 @@ func (e *CustomUniversalTTSElement) processMessages(ctx context.Context) {
         }
     }
 }
-
 // streamAndOutput handles chunk-by-chunk reception
 func (e *CustomUniversalTTSElement) streamAndOutput(ctx context.Context, provider tts.StreamingTTSProvider, text string) error {
 	req := &tts.SynthesizeRequest{
@@ -256,32 +255,10 @@ func (e *CustomUniversalTTSElement) streamAndOutput(ctx context.Context, provide
 
 	log.Printf("[%s] Starting stream synthesis...", e.provider.Name())
 
-	// --- Send PRE-ROLL SILENCE (Fix firts word distorted)---
-    silenceDuration := 100 * time.Millisecond
-    sampleRate := 24000 // Default OpenAI
-    if sr, ok := e.options["sample_rate"].(int); ok {
-        sampleRate = sr
-    }
-    
-    numBytes := int(float64(sampleRate) * 1 * 2 * silenceDuration.Seconds())
-    silenceData := make([]byte, numBytes) 
-
-    silenceMsg := &pipeline.PipelineMessage{
-        Type: pipeline.MsgTypeAudio,
-        AudioData: &pipeline.AudioData{
-            Data:       silenceData,
-            SampleRate: sampleRate,
-            Channels:   1,
-            MediaType:  pipeline.AudioMediaTypePCM,
-            Timestamp:  time.Now(),
-        },
-    }
-
-    select {
-    case e.BaseElement.OutChan <- silenceMsg:
-    case <-ctx.Done():
-        return ctx.Err()
-    }
+	sampleRate := 24000 // Default OpenAI
+	if sr, ok := e.options["sample_rate"].(int); ok {
+		sampleRate = sr
+	}
 
 	audioChan, errChan := provider.StreamSynthesize(ctx, req)
 

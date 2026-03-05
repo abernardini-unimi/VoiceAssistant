@@ -224,6 +224,7 @@ func createPipeline(ctx context.Context, session *realtimeapi.Session, cfg Pipel
         MaxHistory:   20,
         Temperature:  0.7,
         Streaming:    false,
+        InitialPrompt:   "Ciao, chi sei?",
     }
 
     chatElem, err := custom_elements.NewCustomChatElement(chatConfig)
@@ -242,7 +243,7 @@ func createPipeline(ctx context.Context, session *realtimeapi.Session, cfg Pipel
     ttsElem := custom_elements.NewCustomUniversalTTSElement(ttsProvider)
     ttsElem.SetVoice("coral")         
     ttsElem.SetLanguage("it-IT")      
-    ttsElem.SetOption("speed", 1.2)   
+    // ttsElem.SetOption("speed", 1.1)   
     ttsElem.SetStreaming(useStreaming)
 
     elems = append(elems, ttsElem)

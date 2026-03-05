@@ -41,13 +41,16 @@ export LD_LIBRARY_PATH=$(pwd)/onnxruntime-linux-x64-1.20.1/lib:$LD_LIBRARY_PATH
 ```
 
 ```bash
-go run test.go
+go run main.go
 ```
 
 # Configuration .env
 
-Rename `.env-example` in `.env` and insert api_key:
+Rename `.env-example` in `.env` and insert api_key.
+
+# Docker
 
 ```
-OPENAI_API_KEY=YOUR_API_KEY_HERE
+docker build -t voice-assistant .
+docker run -p 8082:8082 -p 9001:9001/udp --env-file .env voice-assistant
 ```

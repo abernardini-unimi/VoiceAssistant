@@ -44,6 +44,7 @@ type CustomChatConfig struct {
 	Streaming    bool
 	MaxHistory   int
 	Temperature  float64
+	InitialPrompt string 
 	// --- NUOVI CAMPI PER MCP ---
 	MCPServerURL   string            // Es: "http://localhost:3001/mcp"
 	MCPServerLabel string            // Es: "test"
@@ -167,9 +168,30 @@ func (e *CustomChatElement) Start(ctx context.Context) error {
         e.processLoop(ctx)
     }()
 
-    log.Printf("[CustomChat] Started (model: %s, streaming: %v, max_history: %d)",
-        e.config.Model, e.config.Streaming, e.config.MaxHistory)
-    return nil
+    if e.config.InitialPrompt != "" {
+		e.wg.Add(1)
+		go func() {
+			defer e.wg.Done()
+			
+			// Attendiamo 200ms per assicurarci che la connessione SIP/WebRTC 
+			// sia completamente stabilita prima di far generare l'audio
+			time.Sleep(200 * time.Millisecond)
+			
+			log.Printf("[CustomChat] Simulazione prompt iniziale utente: %s", e.config.InitialPrompt)
+			
+			// Chiamiamo processMessage per inviare la frase all'LLM.
+			// L'LLM la tratterà come una domanda dell'utente, genererà la risposta 
+			// e la manderà automaticamente al TTS.
+			err := e.processMessage(ctx, e.config.InitialPrompt, "session-init")
+			if err != nil && ctx.Err() == nil {
+				log.Printf("[CustomChat] Errore nel prompt iniziale: %v", err)
+			}
+		}()
+	}
+
+	log.Printf("[CustomChat] Started (model: %s, streaming: %v, max_history: %d)",
+		e.config.Model, e.config.Streaming, e.config.MaxHistory)
+	return nil
 }
 
 // Stop stops the chat element
