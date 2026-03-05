@@ -198,7 +198,7 @@ func createPipeline(ctx context.Context, session *realtimeapi.Session, cfg Pipel
         Channels:               1,                              
     }
 
-    asrElem, err := custom_elements.NewCustomWhisperElement2(config)
+    asrElem, err := custom_elements.NewCustomWhisperElement(config)
     if err != nil {
         log.Fatal(err)
     }

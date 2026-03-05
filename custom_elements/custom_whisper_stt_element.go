@@ -14,9 +14,9 @@ import (
 	"github.com/realtime-ai/realtime-ai/pkg/pipeline"
 )
 
-var _ pipeline.Element = (*CustomWhisperElement2)(nil)
+var _ pipeline.Element = (*CustomWhisperElement)(nil)
 
-type CustomWhisperElement2 struct {
+type CustomWhisperElement struct {
 	*pipeline.BaseElement
 
 	provider asr.Provider
@@ -62,7 +62,7 @@ type NewCustomWhisperConfig struct {
 	BitsPerSample        int
 }
 
-func NewCustomWhisperElement2(config NewCustomWhisperConfig) (*CustomWhisperElement2, error) {
+func NewCustomWhisperElement(config NewCustomWhisperConfig) (*CustomWhisperElement, error) {
 	apiKey := config.APIKey
 	if apiKey == "" {
 		apiKey = os.Getenv("GROQ_API_KEY")
@@ -97,7 +97,7 @@ func NewCustomWhisperElement2(config NewCustomWhisperConfig) (*CustomWhisperElem
 	if config.Channels == 0 { config.Channels = 1 }
 	if config.BitsPerSample == 0 { config.BitsPerSample = 16 }
 
-	elem := &CustomWhisperElement2{
+	elem := &CustomWhisperElement{
 		BaseElement:          pipeline.NewBaseElement("custom-whisper-stt", 100),
 		provider:             provider,
 		language:             config.Language,
@@ -116,13 +116,13 @@ func NewCustomWhisperElement2(config NewCustomWhisperConfig) (*CustomWhisperElem
 	return elem, nil
 }
 
-func (e *CustomWhisperElement2) registerProperties() {
+func (e *CustomWhisperElement) registerProperties() {
 	e.RegisterProperty(pipeline.PropertyDesc{Name: "language", Type: reflect.TypeOf(""), Writable: true, Readable: true, Default: e.language})
 	e.RegisterProperty(pipeline.PropertyDesc{Name: "model", Type: reflect.TypeOf(""), Writable: true, Readable: true, Default: e.model})
 	e.RegisterProperty(pipeline.PropertyDesc{Name: "vad_enabled", Type: reflect.TypeOf(false), Writable: true, Readable: true, Default: e.vadEnabled})
 }
 
-func (e *CustomWhisperElement2) Start(ctx context.Context) error {
+func (e *CustomWhisperElement) Start(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	e.cancel = cancel
 
@@ -145,7 +145,7 @@ func (e *CustomWhisperElement2) Start(ctx context.Context) error {
 	return nil
 }
 
-func (e *CustomWhisperElement2) Stop() error {
+func (e *CustomWhisperElement) Stop() error {
 	if e.cancel != nil {
 		e.cancel()
 		e.wg.Wait()
@@ -164,7 +164,7 @@ func (e *CustomWhisperElement2) Stop() error {
 }
 
 // processAudio accumula l'audio nel buffer.
-func (e *CustomWhisperElement2) processAudio(ctx context.Context) {
+func (e *CustomWhisperElement) processAudio(ctx context.Context) {
 	defer e.wg.Done()
 	for {
 		select {
@@ -186,7 +186,7 @@ func (e *CustomWhisperElement2) processAudio(ctx context.Context) {
 }
 
 // handleVADEvents gestisce gli eventi VAD e innesca la trascrizione IMMEDIATA
-func (e *CustomWhisperElement2) handleVADEvents(ctx context.Context) {
+func (e *CustomWhisperElement) handleVADEvents(ctx context.Context) {
 	defer e.wg.Done()
 	for {
 		select {
@@ -239,7 +239,7 @@ func (e *CustomWhisperElement2) handleVADEvents(ctx context.Context) {
 }
 
 // transcribeDirectly fa una chiamata REST diretta a Groq/OpenAI senza timer
-func (e *CustomWhisperElement2) transcribeDirectly(ctx context.Context, audioData []byte) {
+func (e *CustomWhisperElement) transcribeDirectly(ctx context.Context, audioData []byte) {
 	if len(audioData) == 0 { return }
 
 	startTime := time.Now()
@@ -293,9 +293,9 @@ func (e *CustomWhisperElement2) transcribeDirectly(ctx context.Context, audioDat
 }
 
 // SetProperty e GetProperty rimangono uguali (omessi per brevità se non li cambi)
-func (e *CustomWhisperElement2) SetProperty(name string, value interface{}) error {
+func (e *CustomWhisperElement) SetProperty(name string, value interface{}) error {
 	return e.BaseElement.SetProperty(name, value)
 }
-func (e *CustomWhisperElement2) GetProperty(name string) (interface{}, error) {
+func (e *CustomWhisperElement) GetProperty(name string) (interface{}, error) {
 	return e.BaseElement.GetProperty(name)
 }
