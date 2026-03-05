@@ -36,6 +36,11 @@ RUN chmod +x setup-ffmpeg.sh && \
 
 WORKDIR /go/src/app
 COPY models/ ./models/
+COPY conversation/ ./conversation/
+COPY custom_elements/ ./custom_elements/
+COPY prompt/ ./prompt/
+COPY static/ ./static/
+COPY onnxruntime-linux-x64-1.20.1/ ./onnxruntime-linux-x64-1.20.1
 COPY *.go go.mod go.sum /go/src/app/
 RUN export FFMPEG_DIR=/root/ffmpeg && \
     export PKG_CONFIG_PATH="$FFMPEG_DIR/lib/pkgconfig:$PKG_CONFIG_PATH" && \
@@ -45,6 +50,9 @@ RUN export FFMPEG_DIR=/root/ffmpeg && \
     export CGO_LDFLAGS="-L$FFMPEG_DIR/lib" && \
     export PATH="$FFMPEG_DIR/bin:$PATH" && \
     go get && \
-    LC_ALL=C go build
+    LC_ALL=C go build -o /inx-voice-assistant-inxide
 
-CMD ["/inx-voice-assistant-inxide"]
+ENV ONNXRUNTIME_LIB=/go/src/app/onnxruntime-linux-x64-1.20.1/lib/libonnxruntime.so
+ENV LD_LIBRARY_PATH=/go/src/app/onnxruntime-linux-x64-1.20.1/lib:$LD_LIBRARY_PATH
+
+CMD ["/bin/bash", "-c", "eval \"$(/root/setup-ffmpeg.sh --env)\" && /inx-voice-assistant-inxide"]
