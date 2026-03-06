@@ -468,7 +468,7 @@
             <h2>📝 Modulo di Feedback</h2>
             <p style="color: #aaa; margin-bottom: 20px; font-size: 0.9rem;">Compila questo modulo al termine del test per aiutarci a calibrare le reazioni dell'assistente EVA.</p>
             
-            <form id="feedbackForm" onsubmit="event.preventDefault(); alert('Grazie per il feedback! I tuoi dati ci aiuteranno a migliorare EVA.');">
+            <form id="feedbackForm">
                 
                 <h3>Sezione 1: L'atteggiamento di EVA</h3><br>
                 
@@ -930,6 +930,40 @@
             }
             animate();
         }
+        // --- GESTIONE INVIO FEEDBACK ---
+        document.getElementById('feedbackForm').addEventListener('submit', async function(e) {
+            e.preventDefault(); // Evita che la pagina si ricarichi
+
+            // Raccogli i dati del form
+            const formData = new FormData(this);
+            const data = Object.fromEntries(formData.entries());
+            
+            // Aggiungi l'ID della sessione per capire a quale audio si riferisce il feedback
+            data.session_id = sessionId || "Nessuna_Sessione_Attiva";
+            data.timestamp = new Date().toISOString();
+
+            try {
+                // Spedisci i dati al server Go
+                const response = await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    alert('Grazie per il feedback! I dati sono stati salvati sul server.');
+                    this.reset(); // Svuota il modulo
+                } else {
+                    alert('Si è verificato un errore nel salvataggio sul server.');
+                }
+            } catch (error) {
+                console.error('Errore di rete:', error);
+                alert('Errore di connessione. Impossibile inviare il feedback.');
+            }
+        });
     </script>
+    
 </body>
 </html>

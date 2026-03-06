@@ -32,7 +32,7 @@ Per determinare l'azione e la strategia emotiva, segui questo processo:
 - **INCERTEZZA**: L'utente non sa cosa fare/fornisce dati a metà + Arousal <0.5, Dominance <0.4
 - **RABBIA**: Segnalazione disservizio/Ritardo + Arousal >0.7, Dominance >0.6
 - **FRUSTRAZIONE**: Problema ripetuto + Arousal <0.5, Dominance <0.4
-- **URGENZA**: Richiesta di blocco/emergenza + Medio/Alto Arousal 
+- **URGENZA**: Richiesta di blocco/emergenza + Arousal >0.5
 
 # STRATEGIES, LEXICON & TTS ACTING DIRECTIONS
 Scegli la strategia e genera le istruzioni esatte per il motore TTS. Usa il "Lexicon" suggerito per strutturare il `response_text`.

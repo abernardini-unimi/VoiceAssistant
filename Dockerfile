@@ -52,7 +52,16 @@ RUN export FFMPEG_DIR=/root/ffmpeg && \
     go get && \
     LC_ALL=C go build -o /inx-voice-assistant-inxide
 
-ENV ONNXRUNTIME_LIB=/go/src/app/onnxruntime-linux-x64-1.20.1/lib/libonnxruntime.so
-ENV LD_LIBRARY_PATH=/go/src/app/onnxruntime-linux-x64-1.20.1/lib:$LD_LIBRARY_PATH
+ENV ONNX_DIR=/go/src/app/onnxruntime-linux-x64-1.20.1/lib
+
+# QUESTA È LA PARTE CHE RISOLVE IL PROBLEMA SUL CLOUD:
+RUN echo "$ONNX_DIR" > /etc/ld.so.conf.d/onnxruntime.conf && \
+    # Creiamo a mano il link se è andato perso nel caricamento
+    ln -s $ONNX_DIR/libonnxruntime.so.1.20.1 $ONNX_DIR/libonnxruntime.so || true && \
+    # Aggiorniamo il database di sistema
+    ldconfig
+
+# Manteniamo le variabili per sicurezza
+ENV LD_LIBRARY_PATH=$ONNX_DIR:$LD_LIBRARY_PATH
 
 CMD ["/bin/bash", "-c", "eval \"$(/root/setup-ffmpeg.sh --env)\" && /inx-voice-assistant-inxide"]

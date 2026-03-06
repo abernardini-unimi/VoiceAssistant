@@ -1,0 +1,24 @@
+app = 'inx-voice-assistant-inxide-develop-snowy-snow-9207'
+primary_region = 'fra'
+
+[build]
+
+[http_service]
+  internal_port = 8082  # <--- MODIFICATO DA 8080 A 8082
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[services]]
+  protocol = 'udp'
+  internal_port = 9001
+
+  [[services.ports]]
+    port = 9001
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 4
+  memory_mb = 4096

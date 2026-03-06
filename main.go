@@ -9,6 +9,8 @@ import (
     "context"
     "log"
     "os"
+    "fmt"
+    "io"
 	"net/http"
     "path/filepath"
     "sync"
@@ -59,7 +61,15 @@ func main() {
     }
 
     // Get configuration from environment
-    httpPort := getEnv("VOICE_ASSISTANT_PORT", defaultHTTPPort)
+    port := os.Getenv("PORT")
+    if port == "" {
+        port = "8082"
+    }
+    // Assicuriamoci che abbia i due punti
+    if port[0] != ':' {
+        port = ":" + port
+    }
+
     udpPort := getEnvInt("VOICE_ASSISTANT_UDP_PORT", defaultUDPPort)
     voice := getEnv("VOICE_ASSISTANT_VOICE", "Coral")
     
@@ -99,21 +109,69 @@ func main() {
     }
 
     // HTTP handlers
-    http.HandleFunc("/session", srv.HandleNegotiate)
-    http.Handle("/", http.FileServer(http.Dir("static")))
+	http.HandleFunc("/session", srv.HandleNegotiate)
+	http.HandleFunc("/api/feedback", handleFeedback) // <-- AGGIUNGI QUESTA RIGA
+	http.Handle("/", http.FileServer(http.Dir("static")))
 
     log.Println("===========================================")
-    log.Println("  Web Voice Assistant")
+    log.Println("   Web Voice Assistant")
     log.Println("===========================================")
-    log.Printf("  HTTP: http://localhost%s", httpPort)
-    log.Printf("  UDP:  %d", udpPort)
-    log.Printf("  Voice: %s", voice)
-    log.Printf("  VAD:  %v", vadModelPath != "")
+    // Usiamo 'port' per il log e per l'ascolto
+    log.Printf("   HTTP Server: http://0.0.0.0%s", port)
+    log.Printf("   UDP Port:    %d", udpPort)
+    log.Printf("   Voice:       %s", voice)
+    log.Printf("   VAD:         %v", vadModelPath != "")
     log.Println("===========================================")
 
-    if err := http.ListenAndServe(httpPort, nil); err != nil {
+    // Avvio finale su 0.0.0.0
+    if err := http.ListenAndServe("0.0.0.0"+port, nil); err != nil {
         log.Fatalf("Failed to start HTTP server: %v", err)
     }
+}
+
+// handleFeedback riceve i dati del modulo HTML e li salva in un file JSON
+func handleFeedback(w http.ResponseWriter, r *http.Request) {
+	// Accetta solo richieste POST
+	if r.Method != http.MethodPost {
+		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Crea la cartella "feedback" se non esiste
+	err := os.MkdirAll("feedback", 0755)
+	if err != nil {
+		log.Printf("[Feedback] Errore creazione cartella: %v", err)
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+		return
+	}
+
+	// Leggi il JSON inviato dal browser
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("[Feedback] Errore lettura body: %v", err)
+		http.Error(w, "Errore di lettura", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	// Genera un nome file univoco
+	timestamp := time.Now().Format("20060102_150405")
+	filename := filepath.Join("feedback", fmt.Sprintf("feedback_%s.json", timestamp))
+
+	// Salva il file
+	err = os.WriteFile(filename, body, 0644)
+	if err != nil {
+		log.Printf("[Feedback] Errore salvataggio file: %v", err)
+		http.Error(w, "Errore di salvataggio", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[Feedback] ✅ Nuovo feedback salvato in: %s", filename)
+
+	// Rispondi con un successo al browser
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"success"}`))
 }
 
 // PipelineConfig holds configuration for pipeline creation
