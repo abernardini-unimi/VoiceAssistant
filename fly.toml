@@ -1,0 +1,40 @@
+app = 'inx-voice-assistant-inxide-develop'
+primary_region = 'fra'
+
+[build]
+
+[[vm]]
+  cpu_kind = 'performance'
+  cpus = 2
+  memory_mb = 4096
+
+# HTTP/HTTPS
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.http_checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/"
+
+# UDP per WebRTC audio
+[[services]]
+  internal_port = 9001
+  protocol = "udp"
+
+  [[services.ports]]
+    port = 9001

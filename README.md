@@ -41,7 +41,7 @@ export LD_LIBRARY_PATH=$(pwd)/onnxruntime-linux-x64-1.20.1/lib:$LD_LIBRARY_PATH
 ```
 
 ```bash
-go run test.go
+go run main.go
 ```
 
 # Configuration .env
@@ -49,5 +49,16 @@ go run test.go
 Rename `.env-example` in `.env` and insert api_key:
 
 ```
-OPENAI_API_KEY=YOUR_API_KEY_HERE
+OPENAI_API_KEY=''
+GROQ_API_KEY=''
 ```
+
+# Docker
+'''
+docker run -it --rm \
+  -p 8080:8080 \
+  -p 9001:9001/udp \
+  -e OPENAI_API_KEY=sk-xxxxxxxxxxxx \
+  -e GROQ_API_KEY=gsk-xxxxxxxxxxxx \
+  voice-assistant
+'''

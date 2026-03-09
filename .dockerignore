@@ -1,0 +1,40 @@
+# File di test e sviluppo
+test.go
+pad.go
+web-voice-assistant-base/
+web-voice-assistant-qroq/
+web-voice-assistant-qroq_v2/
+web-voice-assistant-qroq_v3/
+web-voice-assistant-qroq_v4/
+
+# Environment variables (non copiare le API key nel container)
+.env
+.env.*
+!.env-example
+
+# Git
+.git
+.gitignore
+
+# Docker stesso
+Dockerfile
+.dockerignore
+
+# Documentazione
+README.md
+*.md
+
+# Editor e OS
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Log
+*.log
+
+# Build artifacts locali
+*.exe
+*.out
