@@ -1,1 +1,0 @@
-Base voice assistant with the same components of native repository (Use OpenAI not ElevenLabs)  

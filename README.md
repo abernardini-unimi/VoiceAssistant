@@ -54,11 +54,14 @@ GROQ_API_KEY=''
 ```
 
 # Docker
-'''
+
+```
+docker build -t voice-assistant .
+
 docker run -it --rm \
   -p 8080:8080 \
   -p 9001:9001/udp \
   -e OPENAI_API_KEY=sk-xxxxxxxxxxxx \
   -e GROQ_API_KEY=gsk-xxxxxxxxxxxx \
   voice-assistant
-'''
+```
