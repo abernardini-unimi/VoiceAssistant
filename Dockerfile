@@ -77,9 +77,10 @@ COPY models/ ./models/
 COPY prompt/ ./prompt/
 COPY conversation/ ./conversation/
 
-# Porta configurabile (Fly.io / Railway usano $PORT o 8080)
+# Configurazione della porta
 ENV VOICE_ASSISTANT_PORT=:8080
 EXPOSE 8080
+EXPOSE 9001/udp
 
 # Imposta LD_LIBRARY_PATH per trovare FFmpeg e ONNX a runtime
 ENV LD_LIBRARY_PATH=/usr/local/lib/ffmpeg:/usr/local/lib
