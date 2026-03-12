@@ -8,8 +8,11 @@ package main
 import (
     "context"
     "log"
+    "fmt"
+    "strings"
     "os"
 	"net/http"
+    "encoding/json"
     "path/filepath"
     "sync"
     "time"
@@ -22,6 +25,22 @@ import (
     "github.com/realtime-ai/realtime-ai/pkg/tts"
     "inx-voice-assistant-inxide/custom_elements"
 )
+
+type FeedbackData struct {
+	Sintonia     string `json:"sintonia"`
+	Acting       string `json:"acting"`
+	Speed        string `json:"speed"`
+	Balance      string `json:"balance"`
+	DynamicAdapt string `json:"dynamic_adapt"`
+	Authority    string `json:"authority"`
+	Latency      string `json:"latency"`
+	Bargein      string `json:"bargein"`
+	BestScenario string `json:"best_scenario"`
+	WeakPoint    string `json:"weak_point"`
+	Notes        string `json:"notes"`
+	SessionID    string `json:"session_id"`
+	Timestamp    string `json:"timestamp"`
+}
 
 const (
     defaultHTTPPort = ":8082"
@@ -98,9 +117,14 @@ func main() {
         log.Fatalf("Failed to start WebRTC server: %v", err)
     }
 
-    // HTTP handlers
+    // --- HTTP handlers ---
     http.HandleFunc("/session", srv.HandleNegotiate)
+    
+    // AGGIUNGI QUESTA RIGA: collega l'URL alla funzione di salvataggio
+    http.HandleFunc("/api/feedback", handleFeedback) 
+    
     http.Handle("/", http.FileServer(http.Dir("static")))
+    // ---------------------
 
     log.Println("===========================================")
     log.Println("  Web Voice Assistant")
@@ -198,7 +222,7 @@ func createPipeline(ctx context.Context, session *realtimeapi.Session, cfg Pipel
         Channels:               1,                              
     }
 
-    asrElem, err := custom_elements.NewCustomWhisperElement2(config)
+    asrElem, err := custom_elements.NewCustomWhisperElement(config)
     if err != nil {
         log.Fatal(err)
     }
@@ -224,6 +248,7 @@ func createPipeline(ctx context.Context, session *realtimeapi.Session, cfg Pipel
         MaxHistory:   20,
         Temperature:  0.7,
         Streaming:    false,
+        InitialPrompt:   "Ciao, chi sei?",
     }
 
     chatElem, err := custom_elements.NewCustomChatElement(chatConfig)
@@ -242,7 +267,7 @@ func createPipeline(ctx context.Context, session *realtimeapi.Session, cfg Pipel
     ttsElem := custom_elements.NewCustomUniversalTTSElement(ttsProvider)
     ttsElem.SetVoice("coral")         
     ttsElem.SetLanguage("it-IT")      
-    ttsElem.SetOption("speed", 1.2)   
+    // ttsElem.SetOption("speed", 1.1)   
     ttsElem.SetStreaming(useStreaming)
 
     elems = append(elems, ttsElem)
@@ -519,4 +544,56 @@ func (e *SimpleResamplerElement) Stop() error {
         e.cancel = nil
     }
     return nil
+}
+
+func handleFeedback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var data FeedbackData
+	err := json.NewDecoder(r.Body).Decode(&data)
+	if err != nil {
+		log.Printf("[Feedback] Errore decoding JSON: %v", err)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Crea la cartella "feedback" se non esiste
+	feedbackDir := "feedback"
+	if err := os.MkdirAll(feedbackDir, 0755); err != nil {
+		log.Printf("[Feedback] Errore creazione cartella: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// 2. Prepariamo il nome del file usando il timestamp
+	// Puliamo il timestamp dai caratteri non validi per i nomi file (es: : o Z)
+	cleanTimestamp := strings.ReplaceAll(data.Timestamp, ":", "-")
+	cleanTimestamp = strings.ReplaceAll(cleanTimestamp, ".", "_")
+	
+	fileName := fmt.Sprintf("%s/%s.json", feedbackDir, cleanTimestamp)
+
+	// 3. Formattiamo il JSON in modo "bello" (indentato)
+	fileData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		log.Printf("[Feedback] Errore formattazione JSON: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// 4. Scriviamo il file
+	err = os.WriteFile(fileName, fileData, 0644)
+	if err != nil {
+		log.Printf("[Feedback] Errore scrittura file: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[Feedback] Salvato correttamente: %s", fileName)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok"}`))
 }
