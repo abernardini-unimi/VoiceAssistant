@@ -868,6 +868,9 @@
                 sessionId = result.session_id;
                 sessionIdEl.textContent = sessionId;
 
+                // Nel file static/index.html
+                result.sdp.sdp = result.sdp.sdp.replace(/(172\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)/g, '16.16.159.163');
+
                 await pc.setRemoteDescription(result.sdp);
                 logEvent('client', 'WebRTC connected');
 
